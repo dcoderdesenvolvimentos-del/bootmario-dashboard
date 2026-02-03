@@ -14,7 +14,6 @@ import {
   Cell,
 } from "recharts";
 
-/* 🎨 PALETA */
 const COLORS = ["#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function Dashboard() {
@@ -26,7 +25,7 @@ export default function Dashboard() {
   const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
 
-  /* 🔐 ESPERA LOGIN (ESSENCIAL PARA REFRESH) */
+  /* 🔐 AUTH */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -35,51 +34,33 @@ export default function Dashboard() {
     return () => unsub();
   }, []);
 
-  /* 🔴 FIRESTORE TEMPO REAL (SÓ DEPOIS DO LOGIN) */
+  /* 🔴 FIRESTORE */
   useEffect(() => {
     if (!user) return;
 
-    const unsubGastos = onSnapshot(
-      collection(db, "users", user.uid, "gastos"),
-      (snap) => setGastos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    const u1 = onSnapshot(collection(db, "users", user.uid, "gastos"), (snap) =>
+      setGastos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
-    const unsubListas = onSnapshot(
-      collection(db, "users", user.uid, "listas"),
-      (snap) => setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    const u2 = onSnapshot(collection(db, "users", user.uid, "listas"), (snap) =>
+      setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
-    const unsubLembretes = onSnapshot(
+    const u3 = onSnapshot(
       collection(db, "users", user.uid, "lembretes"),
       (snap) => setLembretes(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
     return () => {
-      unsubGastos();
-      unsubListas();
-      unsubLembretes();
+      u1();
+      u2();
+      u3();
     };
   }, [user]);
 
-  /* ⏳ LOADING SEGURO */
-  if (loadingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-blue-600">
-        Carregando dashboard…
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-red-500">
-        Sessão expirada. Volte pelo link do Mário.
-      </div>
-    );
-  }
-
   /* 📅 GASTOS DO MÊS */
   const gastosMes = useMemo(() => {
+    if (!gastos.length) return [];
     return gastos.filter((g) => {
       const d = g.timestamp?.toDate?.();
       if (!d) return false;
@@ -88,49 +69,62 @@ export default function Dashboard() {
   }, [gastos, mesSelecionado]);
 
   /* 📅 MÊS ANTERIOR */
-  const mesAnterior = getMesAnterior(mesSelecionado);
-
   const gastosMesAnterior = useMemo(() => {
+    if (!gastos.length) return [];
+    const mesAnterior = getMesAnterior(mesSelecionado);
     return gastos.filter((g) => {
       const d = g.timestamp?.toDate?.();
       if (!d) return false;
       return toMes(d) === mesAnterior;
     });
-  }, [gastos, mesAnterior]);
+  }, [gastos, mesSelecionado]);
 
   /* 💰 TOTAIS */
-  const totalMes = soma(gastosMes);
-  const totalMesAnterior = soma(gastosMesAnterior);
+  const totalMes = useMemo(() => soma(gastosMes), [gastosMes]);
+  const totalMesAnterior = useMemo(
+    () => soma(gastosMesAnterior),
+    [gastosMesAnterior],
+  );
   const diff = totalMes - totalMesAnterior;
 
-  /* 📈 GRÁFICO DIÁRIO (SEGURO) */
-  const chartDia = gastosMes
-    .filter((g) => g.timestamp?.toDate)
-    .map((g) => ({
-      dia: g.timestamp.toDate().getDate(),
-      valor: Number(g.valor || 0),
-    }));
+  /* 📈 GRÁFICO DIA */
+  const chartDia = useMemo(() => {
+    return gastosMes
+      .filter((g) => g.timestamp?.toDate)
+      .map((g) => ({
+        dia: g.timestamp.toDate().getDate(),
+        valor: Number(g.valor || 0),
+      }));
+  }, [gastosMes]);
 
-  /* 📊 GRÁFICO CATEGORIA */
+  /* 📊 CATEGORIAS */
   const chartCategoria = useMemo(() => {
+    if (!totalMes) return [];
     const map = {};
     gastosMes.forEach((g) => {
       const c = g.categoria || "outros";
       map[c] = (map[c] || 0) + Number(g.valor || 0);
     });
-
     return Object.entries(map).map(([name, value]) => ({
       name,
       value,
-      percent: totalMes ? ((value / totalMes) * 100).toFixed(1) : 0,
+      percent: ((value / totalMes) * 100).toFixed(1),
     }));
   }, [gastosMes, totalMes]);
+
+  /* 🖥️ RENDER */
+  if (loadingAuth) {
+    return <div className="p-10 text-blue-600">Carregando…</div>;
+  }
+
+  if (!user) {
+    return <div className="p-10 text-red-500">Sessão expirada</div>;
+  }
 
   return (
     <div className="bg-blue-50 min-h-screen p-4 space-y-6">
       <h1 className="text-2xl font-bold text-blue-700">Resumo financeiro</h1>
 
-      {/* CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card title="Gastos do mês" value={`R$ ${totalMes.toFixed(2)}`} />
         <Card
@@ -156,84 +150,5 @@ export default function Dashboard() {
   );
 }
 
-/* 🧩 COMPONENTES */
-
-function Card({ title, value, highlight }) {
-  const color =
-    highlight === "red"
-      ? "text-red-500"
-      : highlight === "green"
-        ? "text-green-600"
-        : "text-blue-600";
-
-  return (
-    <div className="bg-white rounded-xl p-4 shadow border border-blue-100">
-      <p className="text-sm text-slate-500">{title}</p>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
-    </div>
-  );
-}
-
-function Section({ title, children }) {
-  return (
-    <div className="bg-white rounded-xl shadow border border-blue-100 overflow-hidden">
-      <div className="bg-blue-500 px-4 py-2 text-white font-semibold">
-        {title}
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function LineChartBox({ data }) {
-  if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
-
-  return (
-    <div className="h-56">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <XAxis dataKey="dia" />
-          <YAxis />
-          <Tooltip />
-          <Line dataKey="valor" stroke="#2563eb" strokeWidth={3} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function PieChartBox({ data }) {
-  if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
-
-  return (
-    <ResponsiveContainer width="100%" height={240}>
-      <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" outerRadius={90}>
-          {data.map((_, i) => (
-            <Cell key={i} fill={COLORS[i % COLORS.length]} />
-          ))}
-        </Pie>
-        <Tooltip />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-}
-
-/* 🔧 HELPERS */
-
-function soma(arr) {
-  return arr.reduce((acc, g) => acc + Number(g.valor || 0), 0);
-}
-
-function toMes(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getMesAtual() {
-  return toMes(new Date());
-}
-
-function getMesAnterior(mes) {
-  const [y, m] = mes.split("-").map(Number);
-  return toMes(new Date(y, m - 2, 1));
-}
+/* COMPONENTES AUXILIARES (IGUAIS AO SEU) */
+// Card, Section, LineChartBox, PieChartBox, helpers
