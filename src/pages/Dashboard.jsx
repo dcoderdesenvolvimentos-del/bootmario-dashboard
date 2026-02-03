@@ -18,56 +18,39 @@ import {
 const COLORS = ["#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function Dashboard() {
-  const [uid, setUid] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   const [gastos, setGastos] = useState([]);
   const [listas, setListas] = useState([]);
   const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
 
-  /* 🔐 RESTAURA SESSÃO NO REFRESH */
+  /* 🔐 ESPERA LOGIN (ESSENCIAL PARA REFRESH) */
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) setUid(user.uid);
-      else setUid(null);
-      setAuthLoading(false);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoadingAuth(false);
     });
-
     return () => unsub();
   }, []);
 
-  /* 🛑 PROTEÇÕES */
-  if (authLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center text-blue-600">
-        Carregando dashboard...
-      </div>
-    );
-  }
-
-  if (!uid) {
-    return (
-      <div className="h-screen flex items-center justify-center text-red-500">
-        Sessão expirada. Acesse novamente pelo link do Mário.
-      </div>
-    );
-  }
-
-  /* 🔴 FIRESTORE EM TEMPO REAL */
+  /* 🔴 FIRESTORE TEMPO REAL (SÓ DEPOIS DO LOGIN) */
   useEffect(() => {
+    if (!user) return;
+
     const unsubGastos = onSnapshot(
-      collection(db, "users", uid, "gastos"),
+      collection(db, "users", user.uid, "gastos"),
       (snap) => setGastos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
     const unsubListas = onSnapshot(
-      collection(db, "users", uid, "listas"),
+      collection(db, "users", user.uid, "listas"),
       (snap) => setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
     const unsubLembretes = onSnapshot(
-      collection(db, "users", uid, "lembretes"),
+      collection(db, "users", user.uid, "lembretes"),
       (snap) => setLembretes(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
@@ -76,7 +59,24 @@ export default function Dashboard() {
       unsubListas();
       unsubLembretes();
     };
-  }, [uid]);
+  }, [user]);
+
+  /* ⏳ LOADING SEGURO */
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-blue-600">
+        Carregando dashboard…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-500">
+        Sessão expirada. Volte pelo link do Mário.
+      </div>
+    );
+  }
 
   /* 📅 GASTOS DO MÊS */
   const gastosMes = useMemo(() => {
@@ -103,11 +103,13 @@ export default function Dashboard() {
   const totalMesAnterior = soma(gastosMesAnterior);
   const diff = totalMes - totalMesAnterior;
 
-  /* 📈 GRÁFICO DIÁRIO */
-  const chartDia = gastosMes.map((g) => ({
-    dia: g.timestamp.toDate().getDate(),
-    valor: Number(g.valor),
-  }));
+  /* 📈 GRÁFICO DIÁRIO (SEGURO) */
+  const chartDia = gastosMes
+    .filter((g) => g.timestamp?.toDate)
+    .map((g) => ({
+      dia: g.timestamp.toDate().getDate(),
+      valor: Number(g.valor || 0),
+    }));
 
   /* 📊 GRÁFICO CATEGORIA */
   const chartCategoria = useMemo(() => {
@@ -120,31 +122,16 @@ export default function Dashboard() {
     return Object.entries(map).map(([name, value]) => ({
       name,
       value,
-      percent: ((value / totalMes) * 100).toFixed(1),
+      percent: totalMes ? ((value / totalMes) * 100).toFixed(1) : 0,
     }));
   }, [gastosMes, totalMes]);
 
   return (
-    <div className="bg-blue-50 min-h-screen p-4 md:p-6 space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-blue-700">Resumo financeiro</h1>
-
-        <select
-          className="bg-white border border-blue-200 rounded-lg p-2 text-sm"
-          value={mesSelecionado}
-          onChange={(e) => setMesSelecionado(e.target.value)}
-        >
-          {gerarMeses(gastos).map((m) => (
-            <option key={m} value={m}>
-              {formatarMes(m)}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="bg-blue-50 min-h-screen p-4 space-y-6">
+      <h1 className="text-2xl font-bold text-blue-700">Resumo financeiro</h1>
 
       {/* CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card title="Gastos do mês" value={`R$ ${totalMes.toFixed(2)}`} />
         <Card
           title="Mês anterior"
@@ -158,7 +145,6 @@ export default function Dashboard() {
         <Card title="Listas" value={listas.length} />
       </div>
 
-      {/* GRÁFICOS */}
       <Section title="Gastos por dia">
         <LineChartBox data={chartDia} />
       </Section>
@@ -166,28 +152,11 @@ export default function Dashboard() {
       <Section title="Gastos por categoria">
         <PieChartBox data={chartCategoria} />
       </Section>
-
-      {/* LISTAS E LEMBRETES */}
-      <Section title="Últimos gastos">
-        {gastosMes.slice(0, 5).map((g) => (
-          <Row
-            key={g.id}
-            left={g.local || "Gasto"}
-            right={`R$ ${Number(g.valor).toFixed(2)}`}
-          />
-        ))}
-      </Section>
-
-      <Section title="Lembretes">
-        {lembretes.map((l) => (
-          <Row key={l.id} left={l.text || l.nome} />
-        ))}
-      </Section>
     </div>
   );
 }
 
-/* 🧩 UI */
+/* 🧩 COMPONENTES */
 
 function Card({ title, value, highlight }) {
   const color =
@@ -198,7 +167,7 @@ function Card({ title, value, highlight }) {
         : "text-blue-600";
 
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-blue-100">
+    <div className="bg-white rounded-xl p-4 shadow border border-blue-100">
       <p className="text-sm text-slate-500">{title}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
     </div>
@@ -207,20 +176,11 @@ function Card({ title, value, highlight }) {
 
 function Section({ title, children }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-blue-100 overflow-hidden">
-      <div className="bg-blue-600 px-4 py-2">
-        <h2 className="font-semibold text-white">{title}</h2>
+    <div className="bg-white rounded-xl shadow border border-blue-100 overflow-hidden">
+      <div className="bg-blue-500 px-4 py-2 text-white font-semibold">
+        {title}
       </div>
       <div className="p-4">{children}</div>
-    </div>
-  );
-}
-
-function Row({ left, right }) {
-  return (
-    <div className="flex justify-between py-2 border-b last:border-0 text-sm">
-      <span>{left}</span>
-      {right && <span className="text-red-500">{right}</span>}
     </div>
   );
 }
@@ -246,29 +206,16 @@ function PieChartBox({ data }) {
   if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" outerRadius={90}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="space-y-2">
-        {data.map((d) => (
-          <div key={d.name} className="flex justify-between text-sm">
-            <span>{d.name}</span>
-            <span className="font-semibold">{d.percent}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={240}>
+      <PieChart>
+        <Pie data={data} dataKey="value" nameKey="name" outerRadius={90}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -288,21 +235,5 @@ function getMesAtual() {
 
 function getMesAnterior(mes) {
   const [y, m] = mes.split("-").map(Number);
-  const d = new Date(y, m - 2, 1);
-  return toMes(d);
-}
-
-function gerarMeses(gastos) {
-  const set = new Set();
-  gastos.forEach((g) => {
-    const d = g.timestamp?.toDate?.();
-    if (!d) return;
-    set.add(toMes(d));
-  });
-  return Array.from(set).sort().reverse();
-}
-
-function formatarMes(m) {
-  const [y, mo] = m.split("-");
-  return `${mo}/${y}`;
+  return toMes(new Date(y, m - 2, 1));
 }
