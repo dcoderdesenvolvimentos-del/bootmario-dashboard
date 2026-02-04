@@ -18,6 +18,7 @@ const COLORS = ["#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function Dashboard() {
   const [gastos, setGastos] = useState([]);
+  const [receitas, setReceitas] = useState([]);
   const [listas, setListas] = useState([]);
   const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
@@ -33,6 +34,11 @@ export default function Dashboard() {
       (snap) => setGastos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
+    const unsubReceitas = onSnapshot(
+      collection(db, "users", uid, "receitas"),
+      (snap) => setReceitas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
+
     const unsubListas = onSnapshot(
       collection(db, "users", uid, "listas"),
       (snap) => setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -45,6 +51,7 @@ export default function Dashboard() {
 
     return () => {
       unsubGastos();
+      unsubReceitas();
       unsubListas();
       unsubLembretes();
     };
@@ -59,6 +66,15 @@ export default function Dashboard() {
     });
   }, [gastos, mesSelecionado]);
 
+  /* 📅 RECEITAS DO MÊS */
+  const receitasMes = useMemo(() => {
+    return receitas.filter((r) => {
+      const d = r.createdAt?.toDate?.();
+      if (!d) return false;
+      return toMes(d) === mesSelecionado;
+    });
+  }, [receitas, mesSelecionado]);
+
   /* 📅 MÊS ANTERIOR */
   const mesAnterior = getMesAnterior(mesSelecionado);
 
@@ -71,9 +87,13 @@ export default function Dashboard() {
   }, [gastos, mesAnterior]);
 
   /* 💰 TOTAIS */
+  const totalReceitasMes = soma(receitasMes);
   const totalMes = soma(gastosMes);
   const totalMesAnterior = soma(gastosMesAnterior);
   const diff = totalMes - totalMesAnterior;
+
+  /* 🧮 SALDO */
+  const saldoAtual = totalReceitasMes - totalMes;
 
   /* 📈 GRÁFICO DIÁRIO */
   const chartDia = gastosMes.map((g) => ({
@@ -117,16 +137,33 @@ export default function Dashboard() {
 
       {/* CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card title="Gastos do mês" value={`R$ ${totalMes.toFixed(2)}`} />
         <Card
-          title="Mês anterior"
-          value={`R$ ${totalMesAnterior.toFixed(2)}`}
+          title="Receitas do mês"
+          value={totalReceitasMes.toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          })}
+          highlight="green"
         />
+
         <Card
-          title="Diferença"
-          value={`${diff >= 0 ? "+" : ""}R$ ${diff.toFixed(2)}`}
-          highlight={diff > 0 ? "red" : "green"}
+          title="Gastos do mês"
+          value={totalMes.toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          })}
+          highlight="red"
         />
+
+        <Card
+          title="Saldo atual"
+          value={saldoAtual.toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          })}
+          highlight={saldoAtual >= 0 ? "green" : "red"}
+        />
+
         <Card title="Listas" value={listas.length} />
       </div>
 
