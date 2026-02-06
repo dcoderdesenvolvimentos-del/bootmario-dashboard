@@ -207,45 +207,101 @@ function InfoCard({ title, value }) {
 }
 
 function UltimasTransacoes({ gastos, receitas }) {
-  const transacoes = [
-    ...gastos.map((g) => ({
-      tipo: "Despesa",
-      texto: g.local,
-      valor: g.valor,
-      categoria: g.categoria,
-      data: g.timestamp.toDate(),
-    })),
-    ...receitas.map((r) => ({
-      tipo: "Receita",
-      texto: r.descricao,
-      valor: r.valor,
-      categoria: r.origem,
-      data: r.createdAt.toDate(),
-    })),
-  ].sort((a, b) => b.data - a.data);
+  const [filtro, setFiltro] = useState("todas");
+
+  const transacoes = useMemo(() => {
+    const lista = [
+      ...gastos.map((g) => ({
+        tipo: "Despesa",
+        texto: g.local || "Despesa",
+        valor: g.valor,
+        categoria: g.categoria || "Outros",
+        data: g.timestamp.toDate(),
+      })),
+      ...receitas.map((r) => ({
+        tipo: "Receita",
+        texto: r.descricao || "Receita",
+        valor: r.valor,
+        categoria: r.origem || "Entrada",
+        data: r.createdAt.toDate(),
+      })),
+    ].sort((a, b) => b.data - a.data);
+
+    if (filtro === "despesas") {
+      return lista.filter((t) => t.tipo === "Despesa");
+    }
+
+    if (filtro === "receitas") {
+      return lista.filter((t) => t.tipo === "Receita");
+    }
+
+    return lista;
+  }, [gastos, receitas, filtro]);
 
   return (
     <Card title="Últimas transações">
+      {/* 🔘 FILTROS */}
+      <div className="flex gap-2 mb-4">
+        <Filtro ativo={filtro === "todas"} onClick={() => setFiltro("todas")}>
+          Todas
+        </Filtro>
+        <Filtro
+          ativo={filtro === "despesas"}
+          onClick={() => setFiltro("despesas")}
+        >
+          Despesas
+        </Filtro>
+        <Filtro
+          ativo={filtro === "receitas"}
+          onClick={() => setFiltro("receitas")}
+        >
+          Receitas
+        </Filtro>
+      </div>
+
+      {/* 📋 LISTA */}
+      {transacoes.length === 0 && <Empty />}
+
       {transacoes.slice(0, 6).map((t, i) => (
         <div
           key={i}
-          className="flex justify-between py-3 border-b last:border-0"
+          className="flex justify-between items-start py-3 border-b last:border-0"
         >
           <div>
             <p className="font-medium">{t.texto}</p>
-            <div className="flex gap-2 mt-1">
+
+            <div className="flex gap-2 mt-1 flex-wrap">
               <Tag>{t.categoria}</Tag>
               <Tag color={t.tipo === "Despesa" ? "red" : "green"}>{t.tipo}</Tag>
+              <Tag color="gray">
+                {t.tipo === "Despesa" ? "Pago" : "Recebido"}
+              </Tag>
             </div>
           </div>
+
           <span
-            className={`font-semibold text-${t.tipo === "Despesa" ? "red" : "green"}-600`}
+            className={`font-semibold ${
+              t.tipo === "Despesa" ? "text-red-600" : "text-green-600"
+            }`}
           >
             {formatMoney(t.valor)}
           </span>
         </div>
       ))}
     </Card>
+  );
+}
+
+function Filtro({ ativo, children, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1 rounded-full text-sm transition ${
+        ativo ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-600"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
