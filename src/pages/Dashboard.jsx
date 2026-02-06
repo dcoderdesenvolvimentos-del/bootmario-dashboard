@@ -57,51 +57,36 @@ export default function Dashboard() {
     };
   }, [uid]);
 
-  /* 📅 GASTOS DO MÊS */
-  const gastosMes = useMemo(() => {
-    return gastos.filter((g) => {
-      const d = g.timestamp?.toDate?.();
-      if (!d) return false;
-      return toMes(d) === mesSelecionado;
-    });
-  }, [gastos, mesSelecionado]);
+  /* 📅 FILTROS */
+  const gastosMes = useMemo(
+    () =>
+      gastos.filter((g) => {
+        const d = g.timestamp?.toDate?.();
+        return d && toMes(d) === mesSelecionado;
+      }),
+    [gastos, mesSelecionado],
+  );
 
-  /* 📅 RECEITAS DO MÊS */
-  const receitasMes = useMemo(() => {
-    return receitas.filter((r) => {
-      const d = r.createdAt?.toDate?.();
-      if (!d) return false;
-      return toMes(d) === mesSelecionado;
-    });
-  }, [receitas, mesSelecionado]);
-
-  /* 📅 MÊS ANTERIOR */
-  const mesAnterior = getMesAnterior(mesSelecionado);
-
-  const gastosMesAnterior = useMemo(() => {
-    return gastos.filter((g) => {
-      const d = g.timestamp?.toDate?.();
-      if (!d) return false;
-      return toMes(d) === mesAnterior;
-    });
-  }, [gastos, mesAnterior]);
+  const receitasMes = useMemo(
+    () =>
+      receitas.filter((r) => {
+        const d = r.createdAt?.toDate?.();
+        return d && toMes(d) === mesSelecionado;
+      }),
+    [receitas, mesSelecionado],
+  );
 
   /* 💰 TOTAIS */
   const totalReceitasMes = soma(receitasMes);
-  const totalMes = soma(gastosMes);
-  const totalMesAnterior = soma(gastosMesAnterior);
-  const diff = totalMes - totalMesAnterior;
+  const totalGastosMes = soma(gastosMes);
+  const saldoAtual = totalReceitasMes - totalGastosMes;
 
-  /* 🧮 SALDO */
-  const saldoAtual = totalReceitasMes - totalMes;
-
-  /* 📈 GRÁFICO DIÁRIO */
+  /* 📊 GRÁFICOS */
   const chartDia = gastosMes.map((g) => ({
     dia: g.timestamp.toDate().getDate(),
     valor: Number(g.valor),
   }));
 
-  /* 📊 GRÁFICO CATEGORIA + % */
   const chartCategoria = useMemo(() => {
     const map = {};
     gastosMes.forEach((g) => {
@@ -112,9 +97,9 @@ export default function Dashboard() {
     return Object.entries(map).map(([name, value]) => ({
       name,
       value,
-      percent: ((value / totalMes) * 100).toFixed(1),
+      percent: ((value / totalGastosMes) * 100).toFixed(1),
     }));
-  }, [gastosMes, totalMes]);
+  }, [gastosMes, totalGastosMes]);
 
   return (
     <div className="bg-blue-50 min-h-screen p-4 md:p-6 space-y-6">
@@ -135,36 +120,35 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {/* CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 🔥 CARDS (LAYOUT IGUAL AO ANÚNCIO) */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card
-          title="Receitas do mês"
-          value={totalReceitasMes.toLocaleString("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-          })}
+          title="Receitas"
+          value={formatMoney(totalReceitasMes)}
           highlight="green"
         />
 
         <Card
-          title="Gastos do mês"
-          value={totalMes.toLocaleString("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-          })}
+          title="Gastos"
+          value={formatMoney(totalGastosMes)}
           highlight="red"
         />
 
-        <Card
-          title="Saldo atual"
-          value={saldoAtual.toLocaleString("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-          })}
-          highlight={saldoAtual >= 0 ? "green" : "red"}
-        />
+        <div className="col-span-2 lg:col-span-1">
+          <Card
+            title="Saldo Atual"
+            value={formatMoney(saldoAtual)}
+            highlight={saldoAtual >= 0 ? "green" : "red"}
+          />
+        </div>
 
-        <Card title="Listas" value={listas.length} />
+        <div className="col-span-2 lg:col-span-1">
+          <Card title="Listas" value={listas.length} />
+        </div>
+
+        <div className="col-span-2 lg:col-span-1">
+          <Card title="Compromissos" value={lembretes.length} />
+        </div>
       </div>
 
       {/* GRÁFICOS */}
@@ -176,27 +160,29 @@ export default function Dashboard() {
         <PieChartBox data={chartCategoria} />
       </Section>
 
-      {/* LISTAS E LEMBRETES */}
+      {/* LISTAGENS */}
       <Section title="Últimos gastos">
         {gastosMes.slice(0, 5).map((g) => (
           <Row
             key={g.id}
             left={g.local || "Gasto"}
-            right={`R$ ${Number(g.valor).toFixed(2)}`}
+            right={formatMoney(g.valor)}
           />
         ))}
       </Section>
 
-      <Section title="Lembretes">
-        {lembretes.map((l) => (
-          <Row key={l.id} left={l.text || l.nome} />
-        ))}
+      <Section title="Compromissos">
+        {lembretes.length ? (
+          lembretes.map((l) => <Row key={l.id} left={l.text || l.nome} />)
+        ) : (
+          <p className="text-sm text-slate-400">Nenhum compromisso</p>
+        )}
       </Section>
     </div>
   );
 }
 
-/* 🧩 UI */
+/* ================= UI ================= */
 
 function Card({ title, value, highlight }) {
   const color =
@@ -233,6 +219,8 @@ function Row({ left, right }) {
     </div>
   );
 }
+
+/* ================= GRÁFICOS ================= */
 
 function LineChartBox({ data }) {
   if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
@@ -281,7 +269,7 @@ function PieChartBox({ data }) {
   );
 }
 
-/* 🔧 HELPERS */
+/* ================= HELPERS ================= */
 
 function soma(arr) {
   return arr.reduce((acc, g) => acc + Number(g.valor || 0), 0);
@@ -295,18 +283,11 @@ function getMesAtual() {
   return toMes(new Date());
 }
 
-function getMesAnterior(mes) {
-  const [y, m] = mes.split("-").map(Number);
-  const d = new Date(y, m - 2, 1);
-  return toMes(d);
-}
-
 function gerarMeses(gastos) {
   const set = new Set();
   gastos.forEach((g) => {
     const d = g.timestamp?.toDate?.();
-    if (!d) return;
-    set.add(toMes(d));
+    if (d) set.add(toMes(d));
   });
   return Array.from(set).sort().reverse();
 }
@@ -314,4 +295,11 @@ function gerarMeses(gastos) {
 function formatarMes(m) {
   const [y, mo] = m.split("-");
   return `${mo}/${y}`;
+}
+
+function formatMoney(v) {
+  return Number(v || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
