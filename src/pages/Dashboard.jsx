@@ -95,20 +95,23 @@ export default function Dashboard() {
   return (
     <div className="bg-slate-100 min-h-screen p-4 space-y-5">
       {/* HEADER */}
-      <div className="sticky top-0 z-30 bg-slate-100 flex justify-between items-center py-2">
-        <h1 className="text-xl font-bold">Resumo financeiro</h1>
+      {/* ACTION BAR FIXA */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-slate-100 border-b">
+        <div className="max-w-screen-xl mx-auto px-4 py-3 flex justify-between items-center">
+          <h1 className="text-xl font-bold">Resumo financeiro</h1>
 
-        <select
-          className="bg-white rounded-lg px-3 py-1 text-sm shadow"
-          value={mesSelecionado}
-          onChange={(e) => setMesSelecionado(e.target.value)}
-        >
-          {gerarMeses([...gastos, ...receitas]).map((m) => (
-            <option key={m} value={m}>
-              {formatarMes(m)}
-            </option>
-          ))}
-        </select>
+          <select
+            className="bg-white rounded-lg px-3 py-1 text-sm shadow"
+            value={mesSelecionado}
+            onChange={(e) => setMesSelecionado(e.target.value)}
+          >
+            {gerarMeses([...gastos, ...receitas]).map((m) => (
+              <option key={m} value={m}>
+                {formatarMes(m)}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* RECEITAS / GASTOS */}
