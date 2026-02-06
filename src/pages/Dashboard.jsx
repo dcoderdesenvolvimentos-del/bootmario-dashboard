@@ -13,19 +13,15 @@ import {
   Cell,
 } from "recharts";
 
-/* 🎨 PALETA */
-const COLORS = ["#2563eb", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"];
+const COLORS = ["#f97316", "#22c55e", "#3b82f6", "#ef4444", "#8b5cf6"];
 
 export default function Dashboard() {
   const [gastos, setGastos] = useState([]);
   const [receitas, setReceitas] = useState([]);
-  const [listas, setListas] = useState([]);
-  const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
 
   const uid = auth.currentUser?.uid;
 
-  /* 🔴 TEMPO REAL */
   useEffect(() => {
     if (!uid) return;
 
@@ -39,60 +35,65 @@ export default function Dashboard() {
       (snap) => setReceitas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
-    const unsubListas = onSnapshot(
-      collection(db, "users", uid, "listas"),
-      (snap) => setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    );
-
-    const unsubLembretes = onSnapshot(
-      collection(db, "users", uid, "lembretes"),
-      (snap) => setLembretes(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    );
-
     return () => {
       unsubGastos();
       unsubReceitas();
-      unsubListas();
-      unsubLembretes();
     };
   }, [uid]);
 
-  /* 📅 FILTRO POR MÊS */
-  const gastosMes = useMemo(
-    () =>
-      gastos.filter((g) => {
-        const d = g.timestamp?.toDate?.();
-        return d && toMes(d) === mesSelecionado;
-      }),
-    [gastos, mesSelecionado],
-  );
+  const gastosMes = gastos.filter((g) => {
+    const d = g.timestamp?.toDate?.();
+    return d && toMes(d) === mesSelecionado;
+  });
 
-  const receitasMes = useMemo(
-    () =>
-      receitas.filter((r) => {
-        const d = r.createdAt?.toDate?.();
-        return d && toMes(d) === mesSelecionado;
-      }),
-    [receitas, mesSelecionado],
-  );
+  const receitasMes = receitas.filter((r) => {
+    const d = r.createdAt?.toDate?.();
+    return d && toMes(d) === mesSelecionado;
+  });
 
-  /* 💰 TOTAIS */
-  const totalReceitas = soma(receitasMes);
   const totalGastos = soma(gastosMes);
-  const saldoAtual = totalReceitas - totalGastos;
+  const totalReceitas = soma(receitasMes);
+  const saldo = totalReceitas - totalGastos;
+
+  /* 📊 Pizza */
+  const chartCategoria = useMemo(() => {
+    const map = {};
+    gastosMes.forEach((g) => {
+      const cat = g.categoria || "Outros";
+      map[cat] = (map[cat] || 0) + Number(g.valor);
+    });
+
+    return Object.entries(map).map(([name, value]) => ({
+      name,
+      value,
+      percent: ((value / totalGastos) * 100).toFixed(1),
+    }));
+  }, [gastosMes]);
+
+  /* 📈 Linha */
+  const chartDia = gastosMes.map((g) => ({
+    dia: g.timestamp.toDate().getDate(),
+    valor: Number(g.valor),
+  }));
 
   return (
-    <div className="bg-blue-50 min-h-screen p-4 space-y-6">
+    <div className="bg-slate-100 min-h-screen p-4 space-y-5">
       {/* HEADER */}
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-700">Resumo financeiro</h1>
+        <h1 className="text-xl font-bold">Resumo financeiro</h1>
 
         <select
-          className="bg-white border rounded-lg px-3 py-1 text-sm"
+          className="bg-white rounded-lg px-3 py-1 text-sm shadow"
           value={mesSelecionado}
           onChange={(e) => setMesSelecionado(e.target.value)}
         >
-          {gerarMeses([...gastos, ...receitas]).map((m) => (
+          {[
+            ...new Set(
+              [...gastos, ...receitas].map((g) =>
+                toMes((g.timestamp || g.createdAt).toDate()),
+              ),
+            ),
+          ].map((m) => (
             <option key={m} value={m}>
               {formatarMes(m)}
             </option>
@@ -100,172 +101,152 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {/* 🔢 CARDS SUPERIORES */}
+      {/* RECEITAS / DESPESAS */}
       <div className="grid grid-cols-2 gap-4">
-        <Card
-          title="Receitas"
-          value={formatMoney(totalReceitas)}
-          highlight="green"
-        />
-        <Card
-          title="Despesas"
-          value={formatMoney(totalGastos)}
-          highlight="red"
-        />
+        <SummaryCard title="Receitas" value={totalReceitas} color="green" />
+        <SummaryCard title="Despesas" value={totalGastos} color="red" />
       </div>
 
-      {/* 🔢 CARDS INFERIORES */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card
-          title="Saldo atual"
-          value={formatMoney(saldoAtual)}
-          highlight={saldoAtual >= 0 ? "green" : "red"}
-        />
-        <Card title="Listas" value={listas.length} />
-        <Card title="Compromissos" value={lembretes.length} />
-      </div>
+      {/* SALDO */}
+      <SummaryCard
+        title="Saldo atual"
+        value={saldo}
+        color={saldo >= 0 ? "green" : "red"}
+        big
+      />
 
-      {/* 📋 ÚLTIMAS TRANSAÇÕES */}
+      {/* 🍩 GASTOS POR CATEGORIA */}
+      <Card title="Detalhes">
+        {chartCategoria.length ? (
+          <div className="h-52">
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie data={chartCategoria} dataKey="value" outerRadius={90}>
+                  {chartCategoria.map((_, i) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </Card>
+
+      {/* 📈 GASTOS POR DIA */}
+      <Card title="Gastos por dia">
+        {chartDia.length ? (
+          <div className="h-48">
+            <ResponsiveContainer>
+              <LineChart data={chartDia}>
+                <XAxis dataKey="dia" />
+                <YAxis />
+                <Tooltip />
+                <Line dataKey="valor" stroke="#f97316" strokeWidth={3} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </Card>
+
+      {/* 💳 ÚLTIMAS TRANSAÇÕES */}
       <UltimasTransacoes gastos={gastosMes} receitas={receitasMes} />
     </div>
   );
 }
 
-/* =======================
-   COMPONENTES
-======================= */
+/* ================= COMPONENTES ================= */
 
-function Card({ title, value, highlight }) {
-  const color =
-    highlight === "red"
-      ? "text-red-500"
-      : highlight === "green"
-        ? "text-green-600"
-        : "text-blue-600";
-
+function Card({ title, children }) {
   return (
-    <div className="bg-white rounded-xl p-4 shadow border">
-      <p className="text-sm text-slate-500">{title}</p>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+    <div className="bg-white rounded-2xl shadow p-4">
+      <h2 className="font-semibold mb-3">{title}</h2>
+      {children}
     </div>
   );
 }
 
-/* =======================
-   ÚLTIMAS TRANSAÇÕES
-======================= */
+function SummaryCard({ title, value, color, big }) {
+  return (
+    <div
+      className={`bg-white rounded-2xl shadow p-4 ${big ? "text-center" : ""}`}
+    >
+      <p className="text-sm text-slate-500">{title}</p>
+      <p className={`text-2xl font-bold text-${color}-600`}>
+        {formatMoney(value)}
+      </p>
+    </div>
+  );
+}
 
 function UltimasTransacoes({ gastos, receitas }) {
-  const [filtro, setFiltro] = useState("todas");
-
-  const transacoes = useMemo(() => {
-    const g = gastos.map((g) => ({
-      id: g.id,
+  const transacoes = [
+    ...gastos.map((g) => ({
       tipo: "despesa",
-      descricao: g.local || "Despesa",
-      categoria: g.categoria || "Outros",
-      valor: Number(g.valor),
-      data: g.timestamp?.toDate?.(),
-      status: "Pago",
-    }));
-
-    const r = receitas.map((r) => ({
-      id: r.id,
+      texto: g.local,
+      valor: g.valor,
+      categoria: g.categoria,
+      data: g.timestamp.toDate(),
+    })),
+    ...receitas.map((r) => ({
       tipo: "receita",
-      descricao: r.descricao || "Receita",
-      categoria: r.origem || "Entrada",
-      valor: Number(r.valor),
-      data: r.createdAt?.toDate?.(),
-      status: "Recebido",
-    }));
-
-    let todas = [...g, ...r].filter((t) => t.data);
-    todas.sort((a, b) => b.data - a.data);
-
-    if (filtro === "despesas") return todas.filter((t) => t.tipo === "despesa");
-    if (filtro === "receitas") return todas.filter((t) => t.tipo === "receita");
-
-    return todas;
-  }, [gastos, receitas, filtro]);
+      texto: r.descricao,
+      valor: r.valor,
+      categoria: r.origem,
+      data: r.createdAt.toDate(),
+    })),
+  ].sort((a, b) => b.data - a.data);
 
   return (
-    <div className="bg-white rounded-xl shadow border overflow-hidden">
-      <div className="p-4 border-b">
-        <h2 className="font-semibold text-lg">Últimas transações</h2>
-
-        <div className="flex gap-2 mt-3">
-          {["todas", "despesas", "receitas"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltro(f)}
-              className={`px-3 py-1 rounded-full text-sm border ${
-                filtro === f
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-slate-600"
-              }`}
-            >
-              {f === "todas"
-                ? "Todas"
-                : f === "despesas"
-                  ? "Despesas"
-                  : "Receitas"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="divide-y">
-        {transacoes.slice(0, 10).map((t) => (
-          <div key={t.id} className="p-4 flex justify-between">
-            <div>
-              <p className="font-medium">{t.descricao}</p>
-              <p className="text-xs text-slate-400">
-                {t.data.toLocaleDateString("pt-BR")}
-              </p>
-
-              <div className="flex gap-2 mt-1">
-                <Tag color="orange">{t.categoria}</Tag>
-                <Tag color={t.tipo === "despesa" ? "red" : "green"}>
-                  {t.tipo === "despesa" ? "Despesa" : "Receita"}
-                </Tag>
-                <Tag color="green">{t.status}</Tag>
-              </div>
-            </div>
-
-            <div
-              className={`font-semibold ${
-                t.tipo === "despesa" ? "text-red-500" : "text-green-600"
-              }`}
-            >
-              {formatMoney(t.valor)}
+    <Card title="Últimas transações">
+      {transacoes.slice(0, 6).map((t, i) => (
+        <div
+          key={i}
+          className="flex justify-between py-3 border-b last:border-0"
+        >
+          <div>
+            <p className="font-medium">{t.texto}</p>
+            <div className="flex gap-2 mt-1">
+              <Tag>{t.categoria}</Tag>
+              <Tag color={t.tipo === "despesa" ? "red" : "green"}>{t.tipo}</Tag>
             </div>
           </div>
-        ))}
-      </div>
-    </div>
+          <span
+            className={`font-semibold text-${t.tipo === "despesa" ? "red" : "green"}-600`}
+          >
+            {formatMoney(t.valor)}
+          </span>
+        </div>
+      ))}
+    </Card>
   );
 }
 
-function Tag({ children, color }) {
+function Tag({ children, color = "gray" }) {
   const map = {
-    orange: "bg-orange-100 text-orange-700",
-    red: "bg-red-100 text-red-700",
-    green: "bg-green-100 text-green-700",
+    gray: "bg-gray-100 text-gray-600",
+    red: "bg-red-100 text-red-600",
+    green: "bg-green-100 text-green-600",
   };
-
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full ${map[color]}`}>
+    <span className={`text-xs px-2 py-1 rounded-full ${map[color]}`}>
       {children}
     </span>
   );
 }
 
-/* =======================
-   HELPERS
-======================= */
+function Empty() {
+  return <p className="text-sm text-slate-400">Sem dados</p>;
+}
+
+/* ================= HELPERS ================= */
 
 function soma(arr) {
-  return arr.reduce((acc, g) => acc + Number(g.valor || 0), 0);
+  return arr.reduce((acc, v) => acc + Number(v.valor || 0), 0);
 }
 
 function formatMoney(v) {
@@ -281,15 +262,6 @@ function toMes(d) {
 
 function getMesAtual() {
   return toMes(new Date());
-}
-
-function gerarMeses(items) {
-  const set = new Set();
-  items.forEach((i) => {
-    const d = i.timestamp?.toDate?.() || i.createdAt?.toDate?.();
-    if (d) set.add(toMes(d));
-  });
-  return Array.from(set).sort().reverse();
 }
 
 function formatarMes(m) {
