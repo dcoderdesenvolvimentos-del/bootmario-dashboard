@@ -18,10 +18,13 @@ const COLORS = ["#f97316", "#22c55e", "#3b82f6", "#ef4444", "#8b5cf6"];
 export default function Dashboard() {
   const [gastos, setGastos] = useState([]);
   const [receitas, setReceitas] = useState([]);
+  const [listas, setListas] = useState([]);
+  const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
 
   const uid = auth.currentUser?.uid;
 
+  /* 🔴 TEMPO REAL */
   useEffect(() => {
     if (!uid) return;
 
@@ -35,12 +38,25 @@ export default function Dashboard() {
       (snap) => setReceitas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     );
 
+    const unsubListas = onSnapshot(
+      collection(db, "users", uid, "listas"),
+      (snap) => setListas(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
+
+    const unsubLembretes = onSnapshot(
+      collection(db, "users", uid, "lembretes"),
+      (snap) => setLembretes(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    );
+
     return () => {
       unsubGastos();
       unsubReceitas();
+      unsubListas();
+      unsubLembretes();
     };
   }, [uid]);
 
+  /* 📅 FILTROS */
   const gastosMes = gastos.filter((g) => {
     const d = g.timestamp?.toDate?.();
     return d && toMes(d) === mesSelecionado;
@@ -51,11 +67,12 @@ export default function Dashboard() {
     return d && toMes(d) === mesSelecionado;
   });
 
+  /* 💰 TOTAIS */
   const totalGastos = soma(gastosMes);
   const totalReceitas = soma(receitasMes);
-  const saldo = totalReceitas - totalGastos;
+  const saldoAtual = totalReceitas - totalGastos;
 
-  /* 📊 Pizza */
+  /* 📊 GRÁFICOS */
   const chartCategoria = useMemo(() => {
     const map = {};
     gastosMes.forEach((g) => {
@@ -70,7 +87,6 @@ export default function Dashboard() {
     }));
   }, [gastosMes]);
 
-  /* 📈 Linha */
   const chartDia = gastosMes.map((g) => ({
     dia: g.timestamp.toDate().getDate(),
     valor: Number(g.valor),
@@ -87,13 +103,7 @@ export default function Dashboard() {
           value={mesSelecionado}
           onChange={(e) => setMesSelecionado(e.target.value)}
         >
-          {[
-            ...new Set(
-              [...gastos, ...receitas].map((g) =>
-                toMes((g.timestamp || g.createdAt).toDate()),
-              ),
-            ),
-          ].map((m) => (
+          {gerarMeses([...gastos, ...receitas]).map((m) => (
             <option key={m} value={m}>
               {formatarMes(m)}
             </option>
@@ -101,22 +111,28 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {/* RECEITAS / DESPESAS */}
+      {/* RECEITAS / GASTOS */}
       <div className="grid grid-cols-2 gap-4">
         <SummaryCard title="Receitas" value={totalReceitas} color="green" />
-        <SummaryCard title="Despesas" value={totalGastos} color="red" />
+        <SummaryCard title="Gastos" value={totalGastos} color="red" />
       </div>
 
       {/* SALDO */}
       <SummaryCard
         title="Saldo atual"
-        value={saldo}
-        color={saldo >= 0 ? "green" : "red"}
+        value={saldoAtual}
+        color={saldoAtual >= 0 ? "green" : "red"}
         big
       />
 
-      {/* 🍩 GASTOS POR CATEGORIA */}
-      <Card title="Detalhes">
+      {/* LISTAS / COMPROMISSOS */}
+      <div className="grid grid-cols-2 gap-4">
+        <InfoCard title="Listas" value={listas.length} />
+        <InfoCard title="Compromissos" value={lembretes.length} />
+      </div>
+
+      {/* GRÁFICO PIZZA */}
+      <Card title="Detalhes por categoria">
         {chartCategoria.length ? (
           <div className="h-52">
             <ResponsiveContainer>
@@ -135,7 +151,7 @@ export default function Dashboard() {
         )}
       </Card>
 
-      {/* 📈 GASTOS POR DIA */}
+      {/* GRÁFICO LINHA */}
       <Card title="Gastos por dia">
         {chartDia.length ? (
           <div className="h-48">
@@ -153,7 +169,7 @@ export default function Dashboard() {
         )}
       </Card>
 
-      {/* 💳 ÚLTIMAS TRANSAÇÕES */}
+      {/* ÚLTIMAS TRANSAÇÕES */}
       <UltimasTransacoes gastos={gastosMes} receitas={receitasMes} />
     </div>
   );
@@ -172,9 +188,7 @@ function Card({ title, children }) {
 
 function SummaryCard({ title, value, color, big }) {
   return (
-    <div
-      className={`bg-white rounded-2xl shadow p-4 ${big ? "text-center" : ""}`}
-    >
+    <div className={`bg-white rounded-2xl shadow p-4 ${big && "text-center"}`}>
       <p className="text-sm text-slate-500">{title}</p>
       <p className={`text-2xl font-bold text-${color}-600`}>
         {formatMoney(value)}
@@ -183,17 +197,26 @@ function SummaryCard({ title, value, color, big }) {
   );
 }
 
+function InfoCard({ title, value }) {
+  return (
+    <div className="bg-white rounded-2xl shadow p-4 text-center">
+      <p className="text-sm text-slate-500">{title}</p>
+      <p className="text-2xl font-bold text-blue-600">{value}</p>
+    </div>
+  );
+}
+
 function UltimasTransacoes({ gastos, receitas }) {
   const transacoes = [
     ...gastos.map((g) => ({
-      tipo: "despesa",
+      tipo: "Despesa",
       texto: g.local,
       valor: g.valor,
       categoria: g.categoria,
       data: g.timestamp.toDate(),
     })),
     ...receitas.map((r) => ({
-      tipo: "receita",
+      tipo: "Receita",
       texto: r.descricao,
       valor: r.valor,
       categoria: r.origem,
@@ -212,11 +235,11 @@ function UltimasTransacoes({ gastos, receitas }) {
             <p className="font-medium">{t.texto}</p>
             <div className="flex gap-2 mt-1">
               <Tag>{t.categoria}</Tag>
-              <Tag color={t.tipo === "despesa" ? "red" : "green"}>{t.tipo}</Tag>
+              <Tag color={t.tipo === "Despesa" ? "red" : "green"}>{t.tipo}</Tag>
             </div>
           </div>
           <span
-            className={`font-semibold text-${t.tipo === "despesa" ? "red" : "green"}-600`}
+            className={`font-semibold text-${t.tipo === "Despesa" ? "red" : "green"}-600`}
           >
             {formatMoney(t.valor)}
           </span>
@@ -262,6 +285,15 @@ function toMes(d) {
 
 function getMesAtual() {
   return toMes(new Date());
+}
+
+function gerarMeses(arr) {
+  const set = new Set();
+  arr.forEach((i) => {
+    const d = (i.timestamp || i.createdAt)?.toDate?.();
+    if (d) set.add(toMes(d));
+  });
+  return Array.from(set).sort().reverse();
 }
 
 function formatarMes(m) {
