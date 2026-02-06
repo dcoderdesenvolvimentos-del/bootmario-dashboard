@@ -57,7 +57,7 @@ export default function Dashboard() {
     };
   }, [uid]);
 
-  /* 📅 FILTROS */
+  /* 📅 FILTRO POR MÊS */
   const gastosMes = useMemo(
     () =>
       gastos.filter((g) => {
@@ -77,42 +77,22 @@ export default function Dashboard() {
   );
 
   /* 💰 TOTAIS */
-  const totalReceitasMes = soma(receitasMes);
-  const totalGastosMes = soma(gastosMes);
-  const saldoAtual = totalReceitasMes - totalGastosMes;
-
-  /* 📊 GRÁFICOS */
-  const chartDia = gastosMes.map((g) => ({
-    dia: g.timestamp.toDate().getDate(),
-    valor: Number(g.valor),
-  }));
-
-  const chartCategoria = useMemo(() => {
-    const map = {};
-    gastosMes.forEach((g) => {
-      const c = g.categoria || "outros";
-      map[c] = (map[c] || 0) + Number(g.valor || 0);
-    });
-
-    return Object.entries(map).map(([name, value]) => ({
-      name,
-      value,
-      percent: ((value / totalGastosMes) * 100).toFixed(1),
-    }));
-  }, [gastosMes, totalGastosMes]);
+  const totalReceitas = soma(receitasMes);
+  const totalGastos = soma(gastosMes);
+  const saldoAtual = totalReceitas - totalGastos;
 
   return (
-    <div className="bg-blue-50 min-h-screen p-4 md:p-6 space-y-6">
+    <div className="bg-blue-50 min-h-screen p-4 space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-blue-700">Resumo financeiro</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold text-blue-700">Resumo financeiro</h1>
 
         <select
-          className="bg-white border border-blue-200 rounded-lg p-2 text-sm"
+          className="bg-white border rounded-lg px-3 py-1 text-sm"
           value={mesSelecionado}
           onChange={(e) => setMesSelecionado(e.target.value)}
         >
-          {gerarMeses(gastos).map((m) => (
+          {gerarMeses([...gastos, ...receitas]).map((m) => (
             <option key={m} value={m}>
               {formatarMes(m)}
             </option>
@@ -120,69 +100,40 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {/* 🔥 CARDS (LAYOUT IGUAL AO ANÚNCIO) */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* 🔢 CARDS SUPERIORES */}
+      <div className="grid grid-cols-2 gap-4">
         <Card
           title="Receitas"
-          value={formatMoney(totalReceitasMes)}
+          value={formatMoney(totalReceitas)}
           highlight="green"
         />
-
         <Card
-          title="Gastos"
-          value={formatMoney(totalGastosMes)}
+          title="Despesas"
+          value={formatMoney(totalGastos)}
           highlight="red"
         />
-
-        <div className="col-span-2 lg:col-span-1">
-          <Card
-            title="Saldo Atual"
-            value={formatMoney(saldoAtual)}
-            highlight={saldoAtual >= 0 ? "green" : "red"}
-          />
-        </div>
-
-        <div className="col-span-2 lg:col-span-1">
-          <Card title="Listas" value={listas.length} />
-        </div>
-
-        <div className="col-span-2 lg:col-span-1">
-          <Card title="Compromissos" value={lembretes.length} />
-        </div>
       </div>
 
-      {/* GRÁFICOS */}
-      <Section title="Gastos por dia">
-        <LineChartBox data={chartDia} />
-      </Section>
+      {/* 🔢 CARDS INFERIORES */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card
+          title="Saldo atual"
+          value={formatMoney(saldoAtual)}
+          highlight={saldoAtual >= 0 ? "green" : "red"}
+        />
+        <Card title="Listas" value={listas.length} />
+        <Card title="Compromissos" value={lembretes.length} />
+      </div>
 
-      <Section title="Gastos por categoria">
-        <PieChartBox data={chartCategoria} />
-      </Section>
-
-      {/* LISTAGENS */}
-      <Section title="Últimos gastos">
-        {gastosMes.slice(0, 5).map((g) => (
-          <Row
-            key={g.id}
-            left={g.local || "Gasto"}
-            right={formatMoney(g.valor)}
-          />
-        ))}
-      </Section>
-
-      <Section title="Compromissos">
-        {lembretes.length ? (
-          lembretes.map((l) => <Row key={l.id} left={l.text || l.nome} />)
-        ) : (
-          <p className="text-sm text-slate-400">Nenhum compromisso</p>
-        )}
-      </Section>
+      {/* 📋 ÚLTIMAS TRANSAÇÕES */}
+      <UltimasTransacoes gastos={gastosMes} receitas={receitasMes} />
     </div>
   );
 }
 
-/* ================= UI ================= */
+/* =======================
+   COMPONENTES
+======================= */
 
 function Card({ title, value, highlight }) {
   const color =
@@ -193,75 +144,101 @@ function Card({ title, value, highlight }) {
         : "text-blue-600";
 
   return (
-    <div className="bg-white rounded-xl p-4 shadow-sm border border-blue-100">
+    <div className="bg-white rounded-xl p-4 shadow border">
       <p className="text-sm text-slate-500">{title}</p>
       <p className={`text-xl font-bold ${color}`}>{value}</p>
     </div>
   );
 }
 
-function Section({ title, children }) {
+/* =======================
+   ÚLTIMAS TRANSAÇÕES
+======================= */
+
+function UltimasTransacoes({ gastos, receitas }) {
+  const [filtro, setFiltro] = useState("todas");
+
+  const transacoes = useMemo(() => {
+    const g = gastos.map((g) => ({
+      id: g.id,
+      tipo: "despesa",
+      descricao: g.local || "Despesa",
+      categoria: g.categoria || "Outros",
+      valor: Number(g.valor),
+      data: g.timestamp?.toDate?.(),
+      status: "Pago",
+    }));
+
+    const r = receitas.map((r) => ({
+      id: r.id,
+      tipo: "receita",
+      descricao: r.descricao || "Receita",
+      categoria: r.origem || "Entrada",
+      valor: Number(r.valor),
+      data: r.createdAt?.toDate?.(),
+      status: "Recebido",
+    }));
+
+    let todas = [...g, ...r].filter((t) => t.data);
+    todas.sort((a, b) => b.data - a.data);
+
+    if (filtro === "despesas") return todas.filter((t) => t.tipo === "despesa");
+    if (filtro === "receitas") return todas.filter((t) => t.tipo === "receita");
+
+    return todas;
+  }, [gastos, receitas, filtro]);
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-blue-100 overflow-hidden">
-      <div className="bg-blue-600 px-4 py-2">
-        <h2 className="font-semibold text-white">{title}</h2>
+    <div className="bg-white rounded-xl shadow border overflow-hidden">
+      <div className="p-4 border-b">
+        <h2 className="font-semibold text-lg">Últimas transações</h2>
+
+        <div className="flex gap-2 mt-3">
+          {["todas", "despesas", "receitas"].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFiltro(f)}
+              className={`px-3 py-1 rounded-full text-sm border ${
+                filtro === f
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-slate-600"
+              }`}
+            >
+              {f === "todas"
+                ? "Todas"
+                : f === "despesas"
+                  ? "Despesas"
+                  : "Receitas"}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
-}
 
-function Row({ left, right }) {
-  return (
-    <div className="flex justify-between py-2 border-b last:border-0 text-sm">
-      <span>{left}</span>
-      {right && <span className="text-red-500">{right}</span>}
-    </div>
-  );
-}
+      <div className="divide-y">
+        {transacoes.slice(0, 10).map((t) => (
+          <div key={t.id} className="p-4 flex justify-between">
+            <div>
+              <p className="font-medium">{t.descricao}</p>
+              <p className="text-xs text-slate-400">
+                {t.data.toLocaleDateString("pt-BR")}
+              </p>
 
-/* ================= GRÁFICOS ================= */
+              <div className="flex gap-2 mt-1">
+                <Tag color="orange">{t.categoria}</Tag>
+                <Tag color={t.tipo === "despesa" ? "red" : "green"}>
+                  {t.tipo === "despesa" ? "Despesa" : "Receita"}
+                </Tag>
+                <Tag color="green">{t.status}</Tag>
+              </div>
+            </div>
 
-function LineChartBox({ data }) {
-  if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
-
-  return (
-    <div className="h-56">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <XAxis dataKey="dia" />
-          <YAxis />
-          <Tooltip />
-          <Line dataKey="valor" stroke="#2563eb" strokeWidth={3} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function PieChartBox({ data }) {
-  if (!data.length) return <p className="text-sm text-slate-400">Sem dados</p>;
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" outerRadius={90}>
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="space-y-2">
-        {data.map((d) => (
-          <div key={d.name} className="flex justify-between text-sm">
-            <span>{d.name}</span>
-            <span className="font-semibold">{d.percent}%</span>
+            <div
+              className={`font-semibold ${
+                t.tipo === "despesa" ? "text-red-500" : "text-green-600"
+              }`}
+            >
+              {formatMoney(t.valor)}
+            </div>
           </div>
         ))}
       </div>
@@ -269,10 +246,33 @@ function PieChartBox({ data }) {
   );
 }
 
-/* ================= HELPERS ================= */
+function Tag({ children, color }) {
+  const map = {
+    orange: "bg-orange-100 text-orange-700",
+    red: "bg-red-100 text-red-700",
+    green: "bg-green-100 text-green-700",
+  };
+
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full ${map[color]}`}>
+      {children}
+    </span>
+  );
+}
+
+/* =======================
+   HELPERS
+======================= */
 
 function soma(arr) {
   return arr.reduce((acc, g) => acc + Number(g.valor || 0), 0);
+}
+
+function formatMoney(v) {
+  return Number(v).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 function toMes(d) {
@@ -283,10 +283,10 @@ function getMesAtual() {
   return toMes(new Date());
 }
 
-function gerarMeses(gastos) {
+function gerarMeses(items) {
   const set = new Set();
-  gastos.forEach((g) => {
-    const d = g.timestamp?.toDate?.();
+  items.forEach((i) => {
+    const d = i.timestamp?.toDate?.() || i.createdAt?.toDate?.();
     if (d) set.add(toMes(d));
   });
   return Array.from(set).sort().reverse();
@@ -295,11 +295,4 @@ function gerarMeses(gastos) {
 function formatarMes(m) {
   const [y, mo] = m.split("-");
   return `${mo}/${y}`;
-}
-
-function formatMoney(v) {
-  return Number(v || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
 }
