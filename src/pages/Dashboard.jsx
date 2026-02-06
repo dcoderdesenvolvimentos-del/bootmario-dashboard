@@ -95,7 +95,7 @@ export default function Dashboard() {
   return (
     <div className="bg-slate-100 min-h-screen p-4 space-y-5">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="sticky top-0 z-30 bg-slate-100 flex justify-between items-center py-2">
         <h1 className="text-xl font-bold">Resumo financeiro</h1>
 
         <select
