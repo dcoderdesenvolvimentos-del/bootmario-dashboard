@@ -93,30 +93,28 @@ export default function Dashboard() {
   }));
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-slate-100 border-b">
-      <div className="bg-slate-100 min-h-screen p-4 space-y-5">
-        {/* HEADER */}
-        <div className="sticky top-0 z-30 bg-slate-100 flex justify-between items-center py-2">
-          <h1 className="text-xl font-bold">Resumo financeiro</h1>
+    <div className="bg-slate-100 min-h-screen p-4 space-y-5">
+      {/* HEADER */}
+      <div className="sticky top-0 z-30 bg-slate-100 flex justify-between items-center py-2">
+        <h1 className="text-xl font-bold">Resumo financeiro</h1>
 
-          <select
-            className="bg-white rounded-lg px-3 py-1 text-sm shadow"
-            value={mesSelecionado}
-            onChange={(e) => setMesSelecionado(e.target.value)}
-          >
-            {gerarMeses([...gastos, ...receitas]).map((m) => (
-              <option key={m} value={m}>
-                {formatarMes(m)}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          className="bg-white rounded-lg px-3 py-1 text-sm shadow"
+          value={mesSelecionado}
+          onChange={(e) => setMesSelecionado(e.target.value)}
+        >
+          {gerarMeses([...gastos, ...receitas]).map((m) => (
+            <option key={m} value={m}>
+              {formatarMes(m)}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        {/* RECEITAS / GASTOS */}
-        <div className="grid grid-cols-2 gap-4">
-          <SummaryCard title="Receitas" value={totalReceitas} color="green" />
-          <SummaryCard title="Gastos" value={totalGastos} color="red" />
-        </div>
+      {/* RECEITAS / GASTOS */}
+      <div className="grid grid-cols-2 gap-4">
+        <SummaryCard title="Receitas" value={totalReceitas} color="green" />
+        <SummaryCard title="Gastos" value={totalGastos} color="red" />
       </div>
 
       {/* SALDO */}
