@@ -313,6 +313,12 @@ function CompromissoModal({ uid, compromisso, onClose }) {
     const data = {
       text,
       when: Timestamp.fromDate(new Date(when)),
+
+      // 🔥 CAMPOS OBRIGATÓRIOS PRO MÁRIO
+      createdAt: Date.now(),
+      sent: false,
+
+      // 🔁 se já existir (recorrente), mantém
       recurrence: compromisso?.recurrence || null,
     };
 
