@@ -32,7 +32,7 @@ export default function BottomBar() {
 
         <Item
           icon={<Bell size={22} />}
-          label="Lembretes"
+          label="Compromissos"
           active={location.pathname.startsWith("/compromissos")}
           onClick={() => navigate("/compromissos")}
         />

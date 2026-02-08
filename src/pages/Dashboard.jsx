@@ -196,6 +196,7 @@ export default function Dashboard() {
         <InfoCard title="Compromissos" value={lembretes.length} />
       </div>
       {/* GRÁFICO PIZZA */}
+
       <Card title="Detalhes por categoria">
         {chartCategoria.length ? (
           <>
