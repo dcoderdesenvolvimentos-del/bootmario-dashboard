@@ -9,32 +9,53 @@ export default function MagicLogin() {
 
   useEffect(() => {
     async function login() {
-      const res = await fetch(
-        "https://bot-whatsapp-production-0c8c.up.railway.app/dashboard/magic-login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug }),
-        },
-      );
+      try {
+        const res = await fetch(
+          "https://bot-whatsapp-production-0c8c.up.railway.app/dashboard/magic-login",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug }),
+          },
+        );
 
-      if (!res.ok) {
+        if (!res.ok) {
+          navigate("/");
+          return;
+        }
+
+        const { token } = await res.json();
+
+        // 🔐 Login com token customizado
+        const userCredential = await signInWithCustomToken(auth, token);
+
+        // ✅ UID REAL do Firebase Auth
+        const uid = userCredential.user.uid;
+
+        // 🔥 SALVA O UID PRA USAR NO DASHBOARD
+        localStorage.setItem("uid", uid);
+
+        console.log("✅ UID salvo:", uid);
+
+        navigate("/dashboard");
+      } catch (err) {
+        console.error("Erro no magic login:", err);
         navigate("/");
-        return;
       }
-
-      const { token } = await res.json();
-      await signInWithCustomToken(auth, token);
-
-      navigate("/dashboard");
     }
 
     if (auth.currentUser) {
-      console.log("✅ Usuário já logado, pulando magic login");
+      console.log("✅ Usuário já logado");
+
+      // garante que o uid esteja salvo
+      localStorage.setItem("uid", auth.currentUser.uid);
+
+      navigate("/dashboard");
       return;
     }
+
     login();
-  }, [slug]);
+  }, [slug, navigate]);
 
   return <p>Entrando no dashboard…</p>;
 }

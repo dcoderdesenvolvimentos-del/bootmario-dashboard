@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Wallet,
+  ChevronDown,
 } from "lucide-react";
 
 import {
@@ -31,13 +32,18 @@ export default function Dashboard() {
   const [lembretes, setLembretes] = useState([]);
   const [mesSelecionado, setMesSelecionado] = useState(getMesAtual());
   const mesAnterior = getMesAnterior(mesSelecionado);
+  const [categoriaAtiva, setCategoriaAtiva] = useState(null);
 
   const [uid, setUid] = useState(null);
 
   /* 📅 FILTROS */
   const gastosMes = gastos.filter((g) => {
     const d = g.timestamp?.toDate?.();
-    return d && toMes(d) === mesSelecionado;
+    if (!d || toMes(d) !== mesSelecionado) return false;
+
+    if (categoriaAtiva && g.categoria !== categoriaAtiva) return false;
+
+    return true;
   });
 
   const receitasMes = receitas.filter((r) => {
@@ -152,25 +158,18 @@ export default function Dashboard() {
   }));
 
   return (
-    <div className="bg-slate-100 min-h-screen pt-16 p-0 space-y-5">
+    <div className="bg-blue-100 min-h-screen pt-16 p-0 space-y-5">
       {/* HEADER */}
-      <div className="sticky top-0 z-30 bg-slate-100 flex justify-between items-center py-2">
+      <div className="sticky top-0 z-30 bg-blue-100 flex justify-between items-center py-2">
         <h1 className="text-xl font-bold">
           {getSaudacao()}
           {nomeUsuario ? `, ${nomeUsuario}!` : "!"}
         </h1>
 
-        <select
-          className="bg-white rounded-lg px-3 py-1 text-sm shadow"
+        <IndigoMonthDropdown
           value={mesSelecionado}
-          onChange={(e) => setMesSelecionado(e.target.value)}
-        >
-          {gerarMeses([...gastos, ...receitas]).map((m) => (
-            <option key={m} value={m}>
-              {formatarMes(m)}
-            </option>
-          ))}
-        </select>
+          onChange={setMesSelecionado}
+        />
       </div>
       {/* RECEITAS / GASTOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -199,22 +198,76 @@ export default function Dashboard() {
       {/* GRÁFICO PIZZA */}
       <Card title="Detalhes por categoria">
         {chartCategoria.length ? (
-          <div className="h-52">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={chartCategoria} dataKey="value" outerRadius={90}>
-                  {chartCategoria.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          <>
+            {/* TOTAL */}
+            <p className="mb-3 text-sm text-slate-500">
+              Total no período:{" "}
+              <span className="font-semibold text-slate-700">
+                {formatMoney(totalGastos)}
+              </span>
+            </p>
+
+            {/* GRÁFICO */}
+            <div className="h-52">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={chartCategoria}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={45}
+                    outerRadius={85}
+                    paddingAngle={3}
+                    onClick={(data) => {
+                      const cat = data?.name;
+                      setCategoriaAtiva((c) => (c === cat ? null : cat));
+                    }}
+                  >
+                    {chartCategoria.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v) => formatMoney(v)}
+                    labelFormatter={(l) => `Categoria: ${l}`}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* LEGENDA DETALHADA */}
+            <div className="mt-4 space-y-2">
+              {chartCategoria.map((c, i) => (
+                <div
+                  key={c.name}
+                  onClick={() =>
+                    setCategoriaAtiva((v) => (v === c.name ? null : c.name))
+                  }
+                  className={`flex items-center justify-between text-sm cursor-pointer rounded-lg px-2 py-1 transition
+    ${categoriaAtiva === c.name ? "bg-indigo-100" : "hover:bg-gray-50"}
+  `}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                    />
+                    <span className="font-medium">{c.name}</span>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="font-semibold">{formatMoney(c.value)}</p>
+                    <p className="text-xs text-slate-500">{c.percent}%</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <Empty />
         )}
       </Card>
+
       {/* GRÁFICO LINHA */}
       <Card title="Gastos por dia">
         {chartDia.length ? (
@@ -720,4 +773,112 @@ function getMesAnterior(mes) {
 
   const data = new Date(ano, mesAtual - 2, 1);
   return toMes(data);
+}
+
+export function IndigoSelect({ value, onChange, children }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative inline-block">
+      <select
+        value={value}
+        onChange={onChange}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="
+          appearance-none
+          bg-gradient-to-r from-indigo-500 to-violet-500
+          text-white text-sm font-medium
+          rounded-xl px-4 py-2 pr-10
+          shadow-md
+          border border-white/20
+          focus:outline-none focus:ring-2 focus:ring-indigo-300
+          hover:from-indigo-600 hover:to-violet-600
+          transition-all duration-300
+        "
+      >
+        {children}
+      </select>
+
+      {/* ÍCONE */}
+      <ChevronDown
+        size={18}
+        className={`
+          pointer-events-none
+          absolute right-3 top-1/2 -translate-y-1/2
+          text-white/80
+          transition-transform duration-300
+          ${open ? "rotate-180 scale-110" : "rotate-0"}
+        `}
+      />
+    </div>
+  );
+}
+
+function IndigoMonthDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+
+  const options = [
+    { label: "Mês atual", value: getMesAtual() },
+    { label: "Mês passado", value: getMesAnterior(getMesAtual()) },
+  ];
+
+  const atual = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative">
+      {/* BOTÃO */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="
+          flex items-center gap-2
+          bg-gradient-to-r from-indigo-500 to-violet-500
+          text-white text-sm font-medium
+          rounded-xl px-4 py-2
+          shadow-md
+          hover:from-indigo-600 hover:to-violet-600
+          transition-all
+        "
+      >
+        {atual?.label}
+        <ChevronDown
+          size={16}
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* MENU */}
+      {open && (
+        <div
+          className="
+            absolute right-0 mt-2 w-40
+            rounded-xl overflow-hidden
+            bg-white shadow-xl z-50
+            border
+          "
+        >
+          {options.map((o) => (
+            <button
+              key={o.value}
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className={`
+                w-full text-left px-4 py-2 text-sm
+                hover:bg-indigo-50
+                ${
+                  value === o.value
+                    ? "bg-indigo-100 text-indigo-700 font-medium"
+                    : "text-gray-700"
+                }
+              `}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
